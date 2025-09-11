@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "4142093377",
+    "project_id": "koko-restaurant",
+    "storage_bucket": "koko-restaurant.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4142093377:android:67926ee9b8d19f0b6fa2c0",
+        "android_client_info": {
+          "package_name": "com.zonafood.kokoplaza"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "4142093377-9t8tqni590jjbsqhqbvu03q93qaa2n8f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zonafood.kokoplaza",
+            "certificate_hash": "f46a9d6f87497b14670c8331e2618c7f93e16677"
+          }
+        },
+        {
+          "client_id": "4142093377-jnpa12rm87sjtuuk6buk0qcpn2b0pab4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRsOq5sAaGJPjtwQWnQ2DQwQJnlCFd41g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "4142093377-jnpa12rm87sjtuuk6buk0qcpn2b0pab4.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "4142093377-j5e4lrb62cg3o2krh9um45gomiq92ppo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.zonafood.kokoplaza"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4142093377:android:326cbf426a86f2d76fa2c0",
+        "android_client_info": {
+          "package_name": "com.zonafood.kokoplaza"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "4142093377-jnpa12rm87sjtuuk6buk0qcpn2b0pab4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRsOq5sAaGJPjtwQWnQ2DQwQJnlCFd41g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "4142093377-jnpa12rm87sjtuuk6buk0qcpn2b0pab4.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "4142093377-j5e4lrb62cg3o2krh9um45gomiq92ppo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.zonafood.kokoplaza"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
