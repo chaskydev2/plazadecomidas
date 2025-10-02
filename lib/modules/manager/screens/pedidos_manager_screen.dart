@@ -11,6 +11,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+// 👇 enum para los chips de fecha
+enum DateFilter { all, today, range }
+
 class PedidosManagerScreen extends StatefulWidget {
   final String restaurantId;
 
@@ -28,15 +31,20 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
 
   int _todos = 0;
   int _pendientes = 0;
+  int _confirmados = 0; // 👈 nuevo
+  int _enProgreso = 0; // 👈 nuevo
   int _listos = 0;
   int _entregados = 0;
   int _cancelados = 0;
+
+  // 👇 estado para filtro de fecha
+  DateFilter _selectedFilter = DateFilter.all;
   DateTimeRange? _selectedDateRange;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _fetchOrderCounts();
   }
 
@@ -50,6 +58,8 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
 
     int todos = 0;
     int pendientes = 0;
+    int confirmados = 0; // 👈 nuevo
+    int enProgreso = 0; // 👈 nuevo
     int listos = 0;
     int entregados = 0;
     int cancelados = 0;
@@ -59,6 +69,8 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
       final data = doc.data();
       final status = data['status'];
       if (status == 'pending') pendientes++;
+      if (status == 'confirmed') confirmados++; // 👈
+      if (status == 'inProgress') enProgreso++; // 👈
       if (status == 'ready') listos++;
       if (status == 'delivered') entregados++;
       if (status == 'cancelled') cancelados++;
@@ -67,10 +79,11 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
     setState(() {
       _todos = todos;
       _pendientes = pendientes;
+      _confirmados = confirmados; // 👈
+      _enProgreso = enProgreso; // 👈
       _listos = listos;
       _entregados = entregados;
       _cancelados = cancelados;
-      DateTimeRange? _selectedDateRange;
     });
   }
 
@@ -80,32 +93,79 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
     super.dispose();
   }
 
-  Future<void> _pickDateRange() async {
-    final DateTimeRange? picked = await showDateRangePicker(
+  // =========================
+  //    Filtro de fecha (chips)
+  // =========================
+  void _setTodayRange() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start
+        .add(const Duration(days: 1))
+        .subtract(const Duration(milliseconds: 1));
+    setState(() {
+      _selectedFilter = DateFilter.today;
+      _selectedDateRange = DateTimeRange(start: start, end: end);
+    });
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
       context: context,
-      firstDate: DateTime(2023),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 1),
       initialDateRange:
           _selectedDateRange ??
           DateTimeRange(
-            start: DateTime.now().subtract(const Duration(days: 7)),
-            end: DateTime.now(),
+            start: DateTime(now.year, now.month, now.day),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+      helpText: 'Selecciona un rango',
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary: AppColors.primary,
+                onPrimary: Colors.white,
+              ),
+            ),
+            child: child!,
           ),
     );
 
     if (picked != null) {
+      // normalizamos a inicio/fin de día
+      final start = DateTime(
+        picked.start.year,
+        picked.start.month,
+        picked.start.day,
+      );
+      final end = DateTime(
+        picked.end.year,
+        picked.end.month,
+        picked.end.day,
+        23,
+        59,
+        59,
+        999,
+      );
       setState(() {
-        _selectedDateRange = picked;
+        _selectedFilter = DateFilter.range;
+        _selectedDateRange = DateTimeRange(start: start, end: end);
       });
     }
   }
 
-  void _clearDateRange() {
+  void _clearFilter() {
     setState(() {
+      _selectedFilter = DateFilter.all;
       _selectedDateRange = null;
     });
   }
 
+  // =========================
+  //        Estados / Acciones
+  // =========================
   Future<void> _updateOrderStatus(String orderId, OrderStatus newStatus) async {
     try {
       final doc =
@@ -143,7 +203,7 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
         await _ingresoService.guardarIngreso(ingreso);
       }
 
-      await _fetchOrderCounts(); // <-- Actualiza contadores después de cambiar estado
+      await _fetchOrderCounts(); // <-- Actualiza contadores
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -291,7 +351,7 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
       await batch.commit();
       loader.remove();
 
-      await _fetchOrderCounts(); // <-- Actualiza contadores después de limpiar
+      await _fetchOrderCounts();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,6 +435,9 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
     }
   }
 
+  // =========================
+  //            UI
+  // =========================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -382,51 +445,42 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
       body: Column(
         children: [
           _buildTabs(),
+          // ----- Chips "Hoy" / "Rango" + limpiar -----
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
             child: Row(
               children: [
-                ElevatedButton.icon(
-                  onPressed: _pickDateRange,
-                  icon: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.date_range, size: 20),
-                  ),
-                  label: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text("Filtrar por fecha"),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    elevation: 3,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                ChoiceChip(
+                  label: const Text('Hoy'),
+                  selected: _selectedFilter == DateFilter.today,
+                  onSelected: (_) => _setTodayRange(),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-
-                const SizedBox(width: 12),
-                if (_selectedDateRange != null)
-                  ElevatedButton.icon(
-                    onPressed: _clearDateRange,
-                    icon: const Icon(Icons.clear),
-                    label: const Text("Limpiar filtro"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[300],
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: const Icon(Icons.date_range_rounded, size: 18),
+                  label: Text(
+                    (_selectedFilter == DateFilter.range &&
+                            _selectedDateRange != null)
+                        ? '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - '
+                            '${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}'
+                        : 'Rango',
+                  ),
+                  onPressed: _pickRange,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: 8),
+                if (_selectedFilter != DateFilter.all)
+                  TextButton.icon(
+                    onPressed: _clearFilter,
+                    icon: const Icon(Icons.clear, size: 18),
+                    label: const Text('Limpiar'),
+                    style: TextButton.styleFrom(
                       foregroundColor: Colors.black87,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                   ),
               ],
@@ -436,11 +490,13 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildOrdersTab(),
-                _buildOrdersTab(filter: OrderStatus.pending),
-                _buildOrdersTab(filter: OrderStatus.inProgress),
-                _buildOrdersTab(filter: OrderStatus.delivered),
-                _buildOrdersTab(filter: OrderStatus.cancelled),
+                _buildOrdersTab(), // Todos
+                _buildOrdersTab(filter: OrderStatus.pending), // Pendiente
+                _buildOrdersTab(filter: OrderStatus.confirmed), // Confirmado
+                _buildOrdersTab(filter: OrderStatus.inProgress), // En progreso
+                _buildOrdersTab(filter: OrderStatus.ready), // Listo
+                _buildOrdersTab(filter: OrderStatus.delivered), // Entregado
+                _buildOrdersTab(filter: OrderStatus.cancelled), // Cancelados
               ],
             ),
           ),
@@ -487,8 +543,10 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
           tabs: [
             Tab(text: 'Todos ($_todos)'),
             Tab(text: 'Pendiente ($_pendientes)'),
-            Tab(text: 'Progreso ($_listos)'),
-            Tab(text: 'Completados ($_entregados)'),
+            Tab(text: 'Confirmado ($_confirmados)'),
+            Tab(text: 'En progreso ($_enProgreso)'),
+            Tab(text: 'Listo ($_listos)'),
+            Tab(text: 'Entregado ($_entregados)'),
             Tab(text: 'Cancelados ($_cancelados)'),
           ],
           onTap: (_) => setState(() {}),
@@ -527,7 +585,15 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
                   final data = doc.data() as Map<String, dynamic>;
                   return ClientOrder.fromJson({...data, 'id': doc.id});
                 })
+                // Filtro por estado (tab)
                 .where((order) => filter == null || order.status == filter)
+                // Filtro por fecha (chips "Hoy" / "Rango")
+                .where((order) {
+                  if (_selectedDateRange == null) return true;
+                  final dt = order.createdAt;
+                  return !dt.isBefore(_selectedDateRange!.start) &&
+                      !dt.isAfter(_selectedDateRange!.end);
+                })
                 .toList();
 
         if (orders.isEmpty) {
@@ -560,6 +626,332 @@ class _PedidosManagerScreenState extends State<PedidosManagerScreen>
   Widget _buildOrderCard(ClientOrder order, BuildContext context) {
     return _OrderCardContent(order: order, parentContext: context);
   }
+
+  // =========================
+  //       PDF / Recibo
+  // =========================
+  Future<void> _generarYCompartirPDF(
+    ClientOrder order,
+    String restaurantName,
+    String restaurantAddress,
+  ) async {
+    try {
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat(
+            80.0 * PdfPageFormat.mm,
+            double.infinity,
+            marginAll: 5,
+          ),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  restaurantName.toUpperCase(),
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  restaurantAddress,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  'RECIBO DE PAGO',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: pw.FontWeight.bold,
+                    decoration: pw.TextDecoration.underline,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: 8),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'N°: ${order.orderNumber.toString().padLeft(6, '0')}',
+                    ),
+                    pw.Text(
+                      'Fecha: ${DateFormat('dd/MM/yyyy').format(order.createdAt)}',
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  'Cliente: ${order.userName}',
+                  style: const pw.TextStyle(fontSize: 9),
+                ),
+                pw.Divider(thickness: 0.5),
+                pw.Text(
+                  'DETALLE:',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 4),
+                ...order.items.map(
+                  (item) => pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 2),
+                    child: pw.Row(
+                      children: [
+                        pw.Expanded(
+                          flex: 3,
+                          child: pw.Text(
+                            '${item.quantity}x ${item.name}',
+                            style: const pw.TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        pw.Text(
+                          '${(item.quantity * item.price).toStringAsFixed(2)} Bs',
+                          style: const pw.TextStyle(fontSize: 8),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                pw.Divider(thickness: 0.5),
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'TOTAL PAGADO:',
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      '${order.total.toStringAsFixed(2)} Bs',
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Forma de pago: QR',
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  '¡Gracias por su compra!',
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/recibo_${order.orderNumber}.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Recibo de compra #${order.orderNumber}',
+        subject: 'Recibo de compra',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar el PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _mostrarRecibo(ClientOrder order, BuildContext context) async {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final formattedDate = dateFormat.format(order.createdAt);
+    final formattedOrderNumber = order.orderNumber.toString().padLeft(6, '0');
+
+    try {
+      final restaurantDoc =
+          await FirebaseFirestore.instance
+              .collection('restaurants')
+              .doc(order.restaurantId)
+              .get();
+
+      final restaurantData = restaurantDoc.data() ?? {};
+      final restaurantName =
+          restaurantData['name']?.toString() ?? 'POLLOS RÁPIDOS';
+      final restaurantAddress =
+          restaurantData['location']?.toString() ?? 'Av. Libertador #1234';
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder:
+            (context) => Dialog(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        restaurantName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        restaurantAddress,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'RECIBO DE PAGO',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('N°: $formattedOrderNumber'),
+                          Text('Fecha: $formattedDate'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Cliente: ${order.userName}',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(thickness: 1),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Detalle:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...order.items.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Text('${item.quantity} x ${item.name}'),
+                              ),
+                              Text(
+                                '${(item.quantity * item.price).toStringAsFixed(2)} Bs',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Divider(thickness: 1),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'TOTAL PAGADO:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            '${order.total.toStringAsFixed(2)} Bs',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Forma de pago: QR',
+                          style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Cerrar
+                          _generarYCompartirPDF(
+                            order,
+                            restaurantName,
+                            restaurantAddress,
+                          );
+                        },
+                        icon: const Icon(Icons.print, size: 18),
+                        label: const Text('Imprimir Recibo'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '¡Gracias por su compra!',
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar el recibo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 }
 
 class _OrderCardContent extends StatefulWidget {
@@ -573,18 +965,15 @@ class _OrderCardContent extends StatefulWidget {
 }
 
 class _OrderCardContentState extends State<_OrderCardContent> {
-  // Estado para controlar si se muestran todos los ítems
   bool _showAllItems = false;
 
   @override
   Widget build(BuildContext context) {
     final statusColor =
         {
-          OrderStatus.pending: AppColors.primary.withOpacity(
-            0.8,
-          ), // naranja suave
+          OrderStatus.pending: AppColors.primary.withOpacity(0.8),
           OrderStatus.confirmed: Colors.blueGrey,
-          OrderStatus.inProgress: const Color(0xFF8E24AA), // púrpura fuerte
+          OrderStatus.inProgress: const Color(0xFF8E24AA),
           OrderStatus.ready: Colors.green[600]!,
           OrderStatus.delivered: Colors.teal[700]!,
           OrderStatus.cancelled: Colors.red[800]!,
@@ -712,7 +1101,6 @@ class _OrderCardContentState extends State<_OrderCardContent> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Mostrar número de mesa si está disponible en las notas
                 if (widget.order.notes != null &&
                     widget.order.notes!.isNotEmpty)
                   Padding(
@@ -821,7 +1209,14 @@ class _OrderCardContentState extends State<_OrderCardContent> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
-                      onPressed: () => _mostrarRecibo(widget.order, context),
+                      onPressed: () {
+                        final parent =
+                            context
+                                .findAncestorStateOfType<
+                                  _PedidosManagerScreenState
+                                >();
+                        parent?._mostrarRecibo(widget.order, context);
+                      },
                       icon: const Icon(Icons.receipt, size: 18),
                       label: const Text('Ver Recibo'),
                       style: TextButton.styleFrom(
@@ -978,335 +1373,6 @@ class _OrderCardContentState extends State<_OrderCardContent> {
         ];
       default:
         return [];
-    }
-  }
-
-  Future<void> _generarYCompartirPDF(
-    ClientOrder order,
-    String restaurantName,
-    String restaurantAddress,
-  ) async {
-    try {
-      // Crear el documento PDF
-      final pdf = pw.Document();
-
-      // Agregar una página al PDF
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat(
-            80.0 * PdfPageFormat.mm,
-            double.infinity,
-            marginAll: 5,
-          ),
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Encabezado del restaurante
-                pw.Text(
-                  restaurantName.toUpperCase(),
-                  style: pw.TextStyle(
-                    fontSize: 12,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                  textAlign: pw.TextAlign.center,
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  restaurantAddress,
-                  style: const pw.TextStyle(fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                  'RECIBO DE PAGO',
-                  style: pw.TextStyle(
-                    fontSize: 10,
-                    fontWeight: pw.FontWeight.bold,
-                    decoration: pw.TextDecoration.underline,
-                  ),
-                  textAlign: pw.TextAlign.center,
-                ),
-                pw.SizedBox(height: 8),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      'N°: ${order.orderNumber.toString().padLeft(6, '0')}',
-                    ),
-                    pw.Text(
-                      'Fecha: ${DateFormat('dd/MM/yyyy').format(order.createdAt)}',
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                  'Cliente: ${order.userName}',
-                  style: const pw.TextStyle(fontSize: 9),
-                ),
-                pw.Divider(thickness: 0.5),
-                pw.Text(
-                  'DETALLE:',
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 4),
-                // Lista de ítems
-                ...order.items.map(
-                  (item) => pw.Padding(
-                    padding: const pw.EdgeInsets.symmetric(vertical: 2),
-                    child: pw.Row(
-                      children: [
-                        pw.Expanded(
-                          flex: 3,
-                          child: pw.Text(
-                            '${item.quantity}x ${item.name}',
-                            style: const pw.TextStyle(fontSize: 8),
-                          ),
-                        ),
-                        pw.Text(
-                          '${(item.quantity * item.price).toStringAsFixed(2)} Bs',
-                          style: const pw.TextStyle(fontSize: 8),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                pw.Divider(thickness: 0.5),
-                pw.SizedBox(height: 4),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      'TOTAL PAGADO:',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.Text(
-                      '${order.total.toStringAsFixed(2)} Bs',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'Forma de pago: QR',
-                  style: pw.TextStyle(
-                    fontSize: 8,
-                    fontStyle: pw.FontStyle.italic,
-                  ),
-                ),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                  '¡Gracias por su compra!',
-                  style: pw.TextStyle(
-                    fontSize: 8,
-                    fontStyle: pw.FontStyle.italic,
-                  ),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-            );
-          },
-        ),
-      );
-
-      // Guardar el PDF en un archivo temporal
-      final output = await getTemporaryDirectory();
-      final file = File('${output.path}/recibo_${order.orderNumber}.pdf');
-      await file.writeAsBytes(await pdf.save());
-
-      // Compartir el archivo
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Recibo de compra #${order.orderNumber}',
-        subject: 'Recibo de compra',
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al generar el PDF: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _mostrarRecibo(ClientOrder order, BuildContext context) async {
-    final dateFormat = DateFormat('dd/MM/yyyy');
-    final formattedDate = dateFormat.format(order.createdAt);
-    final formattedOrderNumber = order.orderNumber.toString().padLeft(6, '0');
-
-    try {
-      final restaurantDoc =
-          await FirebaseFirestore.instance
-              .collection('restaurants')
-              .doc(order.restaurantId)
-              .get();
-
-      final restaurantData = restaurantDoc.data() ?? {};
-      final restaurantName =
-          restaurantData['name']?.toString() ?? 'POLLOS RÁPIDOS';
-      final restaurantAddress =
-          restaurantData['location']?.toString() ?? 'Av. Libertador #1234';
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        builder:
-            (context) => Dialog(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        restaurantName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        restaurantAddress,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'RECIBO DE PAGO',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('N°: $formattedOrderNumber'),
-                          Text('Fecha: $formattedDate'),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Cliente: ${order.userName}',
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Divider(thickness: 1),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Detalle:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...order.items.map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text('${item.quantity} x ${item.name}'),
-                              ),
-                              Text(
-                                '${(item.quantity * item.price).toStringAsFixed(2)} Bs',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const Divider(thickness: 1),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'TOTAL PAGADO:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '${order.total.toStringAsFixed(2)} Bs',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Forma de pago: QR',
-                          style: TextStyle(fontStyle: FontStyle.italic),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop(); // Cerrar el diálogo
-                          _generarYCompartirPDF(
-                            order,
-                            restaurantName,
-                            restaurantAddress,
-                          );
-                        },
-                        icon: const Icon(Icons.print, size: 18),
-                        label: const Text('Imprimir Recibo'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '¡Gracias por su compra!',
-                        style: TextStyle(
-                          fontStyle: FontStyle.italic,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cargar el recibo: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 }

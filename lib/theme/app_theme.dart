@@ -34,13 +34,17 @@ class AppTheme {
           ),
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: const CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade300, width: 1),
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          side: BorderSide(
+            color: Color(0xFFE0E0E0),
+            width: 1,
+          ), // gris.shade300 ≈ #E0E0E0
         ),
       ),
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.grey.shade100,
@@ -85,14 +89,19 @@ class AppTheme {
           ),
         ),
       ),
-      cardTheme: CardTheme(
-        color: const Color(0xFF1E1E1E),
+      cardTheme: const CardThemeData(
+        color: Color(0xFF1E1E1E),
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade800, width: 1),
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          side: BorderSide(
+            color: Color(0xFF424242),
+            width: 1,
+          ), // gris.shade800 ≈ #424242
         ),
+        surfaceTintColor: Colors.transparent, // evita tinte azul por Material 3
       ),
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFF2C2C2C),

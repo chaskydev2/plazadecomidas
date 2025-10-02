@@ -3,7 +3,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    id("org.jetbrains.kotlin.android") // ✅ en vez de "kotlin-android"
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
@@ -20,29 +20,39 @@ android {
     compileSdk = flutter.compileSdkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // ✅ Usa Java 17 si tu AGP/Gradle lo requieren
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17" // ✅
     }
 
     defaultConfig {
         applicationId = "com.zonafood.kokoplaza"
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            // ✅ CORREGIDO: eliminar "../app/" si el .jks está en android/
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
+    // ✅ Solo crear la config de firma si realmente hay propiedades válidas
+    if (keystorePropertiesFile.exists()
+        && keystoreProperties.getProperty("keyAlias") != null
+        && keystoreProperties.getProperty("keyPassword") != null
+        && keystoreProperties.getProperty("storeFile") != null
+        && keystoreProperties.getProperty("storePassword") != null
+    ) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                // Si tu .jks está en android/, deja solo el nombre del archivo en key.properties
+                // (p.ej. storeFile=my-release-key.jks)
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
         }
     }
 
@@ -50,7 +60,12 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("release")
+            // ✅ No revientes si no hay release signing:
+            signingConfig = signingConfigs.findByName("release")
+        }
+        // (opcional) asegura debug:
+        getByName("debug") {
+            signingConfig = signingConfigs.findByName("debug") ?: signingConfigs.getByName("debug")
         }
     }
 }
@@ -59,12 +74,13 @@ flutter {
     source = "../.."
 }
 
+// ⚠️ Normalmente el classpath de google-services va en el build.gradle raíz.
+// Si ya lo tienes allí, puedes quitar este bloque buildscript del módulo app.
 buildscript {
     repositories {
         google()
         mavenCentral()
     }
-
     dependencies {
         classpath("com.google.gms:google-services:4.3.15")
     }

@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:kokorestaurant/core/themes/app_colors.dart';
 import 'package:kokorestaurant/modules/cliente/models/order.dart';
 import 'package:kokorestaurant/modules/cliente/services/history_service.dart';
 import 'package:kokorestaurant/modules/cliente/widgets/history_screen/history_body.dart';
-import 'package:kokorestaurant/modules/cliente/widgets/history_screen/history_tabs.dart';
 
 enum DateFilter { all, today, range }
 
@@ -25,31 +25,46 @@ class _HistoryScreenState extends State<HistoryScreen>
   DateTimeRange? _dateRange; // usado sólo cuando _selectedFilter == range
   double _totalActual = 0.0;
 
-  // Cache local de pedidos para paginar en memoria
+  // Cache local (alimentado por stream)
   List<ClientOrder> _cache = [];
   bool _cacheLoaded = false;
+  StreamSubscription<List<ClientOrder>>? _sub;
+
+  // 👇 Cada vez que cambia el stream, incrementa para forzar rebuild de HistoryBody
+  int _cacheEpoch = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    // Cargamos cache al iniciar si hay usuario
-    _warmupCache();
+    // 7 pestañas: Todos, Pendiente, Confirmado, En progreso, Listo, Entregado, Cancelado
+    _tabController = TabController(length: 7, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) {
+        _recomputeTotal();
+        setState(() {});
+      }
+    });
+    _startLive(); // suscripción en tiempo real
   }
 
-  Future<void> _warmupCache() async {
+  void _startLive() {
     if (_currentUser == null) return;
-    // Obtenemos el snapshot actual una sola vez
-    final list =
-        await _historyService.getUserOrderHistory(_currentUser!.uid).first;
-    _cache = List<ClientOrder>.from(list)..sort(
-      (a, b) => b.createdAt.compareTo(a.createdAt),
-    ); // más recientes primero
-    _cacheLoaded = true;
+    _sub?.cancel();
+    _sub = _historyService.getUserOrderHistory(_currentUser!.uid).listen((list) {
+      _cache = List<ClientOrder>.from(list)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt)); // recientes primero
+      _cacheLoaded = true;
+      _recomputeTotal();
+      _cacheEpoch++; // 👈 fuerza que HistoryBody se reconstruya y recargue páginas
+      if (mounted) setState(() {});
+    });
+  }
 
-    // Recalcular total con el filtro actual
-    _recomputeTotal();
-    if (mounted) setState(() {});
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _tabController.dispose();
+    super.dispose();
   }
 
   // Recalcula el total global según tab + rango actual usando el cache
@@ -71,27 +86,27 @@ class _HistoryScreenState extends State<HistoryScreen>
   ) {
     Iterable<ClientOrder> data = source;
 
-    // por pestaña
+    // por pestaña (7)
     switch (tabIndex) {
-      case 1:
-        data = data.where(
-          (o) =>
-              o.status == OrderStatus.pending ||
-              o.status == OrderStatus.confirmed,
-        );
+      case 1: // Pendiente
+        data = data.where((o) => o.status == OrderStatus.pending);
         break;
-      case 2:
-        data = data.where(
-          (o) =>
-              o.status == OrderStatus.inProgress ||
-              o.status == OrderStatus.ready,
-        );
+      case 2: // Confirmado
+        data = data.where((o) => o.status == OrderStatus.confirmed);
         break;
-      case 3:
+      case 3: // En progreso
+        data = data.where((o) => o.status == OrderStatus.inProgress);
+        break;
+      case 4: // Listo
+        data = data.where((o) => o.status == OrderStatus.ready);
+        break;
+      case 5: // Entregado
         data = data.where((o) => o.status == OrderStatus.delivered);
         break;
-      default:
-        // todos
+      case 6: // Cancelado
+        data = data.where((o) => o.status == OrderStatus.cancelled);
+        break;
+      default: // 0: Todos
         break;
     }
 
@@ -107,16 +122,16 @@ class _HistoryScreenState extends State<HistoryScreen>
     return data.toList();
   }
 
-  // Callback que HistoryBody usará para pedir páginas
+  // Callback que HistoryBody usará para pedir páginas (paginación en memoria)
   Future<List<ClientOrder>> _fetchOrdersPage({
     ClientOrder? lastOrder,
     int limit = 20,
     required int tabIndex,
     DateTimeRange? dateRange,
   }) async {
-    // Asegura cache cargado
+    // Si aún no cargó el primer snapshot en vivo, devolvemos vacío (se repintará cuando llegue)
     if (!_cacheLoaded) {
-      await _warmupCache();
+      return [];
     }
 
     // Filtramos según tab + rango
@@ -133,11 +148,8 @@ class _HistoryScreenState extends State<HistoryScreen>
     // Paginación en memoria
     int startIndex = 0;
     if (lastOrder != null) {
-      // Busca la posición del último pedido entregado previamente
       startIndex = filtered.indexWhere((o) {
-        // Intentamos por algún identificador estable; si no, por orderNumber y createdAt
-        final sameNumber =
-            (o.orderNumber == lastOrder.orderNumber); // suele ser único
+        final sameNumber = (o.orderNumber == lastOrder.orderNumber); // suele ser único
         final sameTime = o.createdAt == lastOrder.createdAt;
         return sameNumber || sameTime;
       });
@@ -147,12 +159,6 @@ class _HistoryScreenState extends State<HistoryScreen>
 
     final page = filtered.skip(startIndex).take(limit).toList();
     return page;
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   void _setTodayRange() {
@@ -165,6 +171,7 @@ class _HistoryScreenState extends State<HistoryScreen>
       _selectedFilter = DateFilter.today;
       _dateRange = DateTimeRange(start: start, end: end);
       _recomputeTotal();
+      _cacheEpoch++; // 👈 para refrescar HistoryBody con el nuevo rango
     });
   }
 
@@ -212,6 +219,7 @@ class _HistoryScreenState extends State<HistoryScreen>
         );
         _dateRange = DateTimeRange(start: start, end: end);
         _recomputeTotal();
+        _cacheEpoch++; // 👈 para refrescar HistoryBody con el nuevo rango
       });
     }
   }
@@ -221,6 +229,7 @@ class _HistoryScreenState extends State<HistoryScreen>
       _selectedFilter = DateFilter.all;
       _dateRange = null;
       _recomputeTotal();
+      _cacheEpoch++; // 👈 para refrescar HistoryBody al limpiar
     });
   }
 
@@ -245,13 +254,49 @@ class _HistoryScreenState extends State<HistoryScreen>
       body: Column(
         children: [
           const SizedBox(height: 10),
-          HistoryTabs(
-            controller: _tabController,
-            background: AppColors.second,
-            indicator: AppColors.primary,
+
+          // ---- Tabs (mismo diseño) pero con 7 estados ----
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.second,
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                indicator: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicatorColor: const Color(0xFFF5F5DC),
+                labelColor: Colors.white,
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15.5,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14.5,
+                ),
+                tabs: const [
+                  Tab(text: 'Todos'),
+                  Tab(text: 'Pendiente'),
+                  Tab(text: 'Confirmado'),
+                  Tab(text: 'En progreso'),
+                  Tab(text: 'Listo'),
+                  Tab(text: 'Entregado'),
+                  Tab(text: 'Cancelado'),
+                ],
+                onTap: (_) => setState(() {}),
+              ),
+            ),
           ),
 
-          // ---- Barra de filtros + Total ----
+          // ---- Barra de filtros + Total (sin cambios de diseño) ----
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: _FiltersBar(
@@ -270,13 +315,16 @@ class _HistoryScreenState extends State<HistoryScreen>
             child: _TotalBar(total: _totalActual),
           ),
 
-          // ---- Lista / Body con scroll infinito ----
+          // ---- Lista / Body con scroll infinito (alimentado por cache en vivo) ----
           Expanded(
             child: AnimatedBuilder(
               animation: _tabController,
               builder: (context, _) {
-                // Cuando cambie de tab, HistoryBody se reinicia internamente
+                // 👇 KEY cambia cuando llega un snapshot o cambias rango/tab ⇒ rebuild total
+                final bodyKey = ValueKey('history-body-${_tabController.index}-$_cacheEpoch');
+
                 return HistoryBody(
+                  key: bodyKey, // 👈 fuerza a recrear HistoryBody y refrescar su data
                   tabIndex: _tabController.index,
                   dateRange: _effectiveRange(),
                   // No pasamos onTotalSum porque calculamos con cache global
