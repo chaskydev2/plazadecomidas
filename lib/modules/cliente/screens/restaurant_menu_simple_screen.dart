@@ -31,12 +31,14 @@ class _RestaurantMenuSimpleScreenState
   int selectedIndex = 0;
   List<MenuItem> _cartItems = [];
 
+  /// Rutas candidatas para Home. Ajusta si tu home se llama distinto.
+  static const List<String> homeRouteCandidates = ['/home', '/'];
+
   @override
   void initState() {
     super.initState();
-    _menuItemsFuture = _restaurantService.getMenuRestourant(
-      widget.restaurant.id,
-    );
+    _menuItemsFuture =
+        _restaurantService.getMenuRestourant(widget.restaurant.id);
   }
 
   void onTabSelected(int index) {
@@ -46,14 +48,13 @@ class _RestaurantMenuSimpleScreenState
   }
 
   void _addToCart(MenuItem item) async {
-    if (_isAdding) return; // Si ya se está agregando, ignorar
+    if (_isAdding) return;
 
     setState(() {
       _isAdding = true;
       _cartItems.add(item);
     });
 
-    // Mostrar SnackBar de forma asíncrona
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -79,93 +80,121 @@ class _RestaurantMenuSimpleScreenState
       ),
     );
 
-    // Esperar duración del SnackBar antes de permitir agregar otro
     await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => _isAdding = false);
+  }
 
-    if (mounted) {
-      setState(() {
-        _isAdding = false;
-      });
+  /// Navega SIEMPRE a Home, sin importar el navigator.
+  Future<void> _goHome() async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    final localNav = Navigator.of(context);
+
+    // 1) Intentar en ROOT con '/home' y luego '/'
+    for (final routeName in homeRouteCandidates) {
+      try {
+        debugPrint('[MenuSimple] goHome -> ROOT pushNamedAndRemoveUntil($routeName)');
+        await rootNav.pushNamedAndRemoveUntil(routeName, (route) => false);
+        return;
+      } catch (e) {
+        debugPrint('[MenuSimple] ROOT no tiene $routeName: $e');
+      }
     }
+
+    // 2) Intentar en LOCAL con '/home' y luego '/'
+    for (final routeName in homeRouteCandidates) {
+      try {
+        debugPrint('[MenuSimple] goHome -> LOCAL pushNamedAndRemoveUntil($routeName)');
+        await localNav.pushNamedAndRemoveUntil(routeName, (route) => false);
+        return;
+      } catch (e) {
+        debugPrint('[MenuSimple] LOCAL no tiene $routeName: $e');
+      }
+    }
+
+    // 3) Fallback: volver al primer route del ROOT (evita pantalla negra)
+    debugPrint('[MenuSimple] Fallback -> ROOT popUntil(isFirst)');
+    rootNav.popUntil((r) => r.isFirst);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(child: _buildRestaurantHeader()),
-          SliverToBoxAdapter(child: _buildPlatosDelLocalHeader()),
-          FutureBuilder<List<MenuItem>>(
-            future: _menuItemsFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (snapshot.hasError) {
-                return SliverFillRemaining(
-                  child: Center(child: Text('Error: \${snapshot.error}')),
-                );
-              }
-              final menuItems = snapshot.data ?? [];
-              if (menuItems.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: Text('No hay items en el menú.')),
-                );
-              }
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => GestureDetector(
-                    onDoubleTap: () => _addToCart(menuItems[index]),
-                    child: _buildMenuItemCard(menuItems[index]),
+    return WillPopScope(
+      onWillPop: () async {
+        debugPrint('[MenuSimple] onWillPop -> goHome');
+        await _goHome();
+        return false; // manejamos nosotros el back
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _buildRestaurantHeader()),
+            SliverToBoxAdapter(child: _buildPlatosDelLocalHeader()),
+            FutureBuilder<List<MenuItem>>(
+              future: _menuItemsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return SliverFillRemaining(
+                    child: Center(child: Text('Error: \${snapshot.error}')),
+                  );
+                }
+                final menuItems = snapshot.data ?? [];
+                if (menuItems.isEmpty) {
+                  return const SliverFillRemaining(
+                    child: Center(child: Text('No hay items en el menú.')),
+                  );
+                }
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => GestureDetector(
+                      onDoubleTap: () => _addToCart(menuItems[index]),
+                      child: _buildMenuItemCard(menuItems[index]),
+                    ),
+                    childCount: menuItems.length,
                   ),
-                  childCount: menuItems.length,
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed:
-            _cartItems.isEmpty
-                ? null
-                : () {
+                );
+              },
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _cartItems.isEmpty
+              ? null
+              : () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder:
-                          (context) => PedidosScreen(
-                            pedidos: _cartItems,
-                            onUpdate: (nuevosPedidos) {
-                              setState(() {
-                                _cartItems = nuevosPedidos;
-                              });
-                            },
-                            qrCode:
-                                '', // No QR en esta versión, puedes personalizarlo
-                            restaurantId: widget.restaurantId,
-                            userId: widget.userId,
-                            restaurant: widget.restaurant,
-                          ),
+                      builder: (context) => PedidosScreen(
+                        pedidos: _cartItems,
+                        onUpdate: (nuevosPedidos) {
+                          setState(() {
+                            _cartItems = nuevosPedidos;
+                          });
+                        },
+                        qrCode: '', // No QR en esta versión
+                        restaurantId: widget.restaurantId,
+                        userId: widget.userId,
+                        restaurant: widget.restaurant,
+                      ),
                     ),
                   );
                 },
-        icon: const Icon(
-          Icons.shopping_cart,
-          color: Colors.white,
-        ), // Cambiado a blanco
-        label: Text(
-          _cartItems.isEmpty ? 'Pedido' : "Pedido (${_cartItems.length})",
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ), // Cambiado a blanco
+          icon: const Icon(Icons.shopping_cart, color: Colors.white),
+          label: Text(
+            _cartItems.isEmpty ? 'Pedido' : "Pedido (${_cartItems.length})",
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: AppColors.primary,
         ),
-        backgroundColor: AppColors.primary,
       ),
     );
   }
@@ -204,69 +233,67 @@ class _RestaurantMenuSimpleScreenState
   }
 
   Widget _buildRestaurantHeader() {
-    final defaultBackground =
-        'https://cdn-icons-png.flaticon.com/512/599/599995.png'; // Icono de fondo por defecto
-
     return Stack(
       children: [
-        // ...existing code...
         ClipRRect(
           borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(20),
             bottomRight: Radius.circular(20),
           ),
-          child:
-              widget.restaurant.imageUrl != null &&
-                      widget.restaurant.imageUrl!.isNotEmpty
-                  ? Image.network(
-                    widget.restaurant.imageUrl!,
-                    width: double.infinity,
-                    height: 210,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 200,
-                        width: double.infinity,
-                        color: Colors.grey[200],
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.restaurant_menu,
-                          color: Colors.grey,
-                          size: 60,
-                        ),
-                      );
-                    },
-                  )
-                  : Container(
-                    height: 180,
-                    width: double.infinity,
-                    color: Colors.grey[200],
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.restaurant_menu,
-                      color: Colors.grey,
-                      size: 60,
-                    ),
+          child: widget.restaurant.imageUrl != null &&
+                  widget.restaurant.imageUrl!.isNotEmpty
+              ? Image.network(
+                  widget.restaurant.imageUrl!,
+                  width: double.infinity,
+                  height: 210,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      width: double.infinity,
+                      color: Colors.grey[200],
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.restaurant_menu,
+                        color: Colors.grey,
+                        size: 60,
+                      ),
+                    );
+                  },
+                )
+              : Container(
+                  height: 180,
+                  width: double.infinity,
+                  color: Colors.grey[200],
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.restaurant_menu,
+                    color: Colors.grey,
+                    size: 60,
                   ),
+                ),
         ),
-        // Botón de regreso
+        // Botón de regreso -> SIEMPRE manda a Home
         Positioned(
           top: 40,
           left: 16,
           child: GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () async {
+              debugPrint('[MenuSimple] Back tap -> goHome');
+              await _goHome();
+            },
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(40),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
               ),
               padding: const EdgeInsets.all(6),
               child: const Icon(Icons.arrow_back, color: Colors.black),
             ),
           ),
         ),
-        // Card de información mejorado
+        // Card de información
         Positioned(
           top: 120,
           left: 16,
@@ -277,12 +304,8 @@ class _RestaurantMenuSimpleScreenState
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: AppColors.primary, width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 14,
-                  offset: Offset(0, 4),
-                ),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 14, offset: Offset(0, 4)),
               ],
             ),
             child: Row(
@@ -292,29 +315,24 @@ class _RestaurantMenuSimpleScreenState
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child:
-                          widget.restaurant.logoUrl != null &&
-                                  widget.restaurant.logoUrl!.isNotEmpty
-                              ? Image.network(
-                                widget.restaurant.logoUrl!,
-                                width: 62,
-                                height: 62,
-                                fit: BoxFit.cover,
-                                errorBuilder:
-                                    (context, error, stackTrace) =>
-                                        _buildDefaultIconBox(),
-                              )
-                              : _buildDefaultIconBox(),
+                      child: widget.restaurant.logoUrl != null &&
+                              widget.restaurant.logoUrl!.isNotEmpty
+                          ? Image.network(
+                              widget.restaurant.logoUrl!,
+                              width: 62,
+                              height: 62,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _buildDefaultIconBox(),
+                            )
+                          : _buildDefaultIconBox(),
                     ),
                     if (widget.restaurant.isEspecial == true)
                       Positioned(
                         top: 2,
                         right: 2,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             borderRadius: BorderRadius.circular(8),
@@ -356,33 +374,19 @@ class _RestaurantMenuSimpleScreenState
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.star,
-                            color: Colors.orange,
-                            size: 16,
-                          ),
+                          const Icon(Icons.star, color: Colors.orange, size: 16),
                           const SizedBox(width: 4),
                           Text(
                             '${widget.restaurant.rating}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(width: 10),
-                          const Icon(
-                            Icons.location_on,
-                            color: Colors.grey,
-                            size: 16,
-                          ),
+                          const Icon(Icons.location_on, color: Colors.grey, size: 16),
                           const SizedBox(width: 2),
                           Flexible(
                             child: Text(
                               '${widget.restaurant.location}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -424,7 +428,7 @@ class _RestaurantMenuSimpleScreenState
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: const [
           Text(
-            'Platos del Local',
+            'Platos del Localito',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ],
@@ -442,24 +446,23 @@ class _RestaurantMenuSimpleScreenState
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
         ),
         child: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child:
-                  item.imageUrl.isNotEmpty
-                      ? Image.network(
-                        item.imageUrl,
-                        width: 70,
-                        height: 70,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return _buildDefaultIconBox(size: 70);
-                        },
-                      )
-                      : _buildDefaultIconBox(size: 70),
+              child: item.imageUrl.isNotEmpty
+                  ? Image.network(
+                      item.imageUrl,
+                      width: 70,
+                      height: 70,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildDefaultIconBox(size: 70);
+                      },
+                    )
+                  : _buildDefaultIconBox(size: 70),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -468,10 +471,7 @@ class _RestaurantMenuSimpleScreenState
                 children: [
                   Text(
                     item.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   Text(

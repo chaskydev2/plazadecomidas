@@ -4,13 +4,72 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kokorestaurant/core/models/restaurant.dart';
 import 'package:kokorestaurant/modules/cliente/services/restaurant_service.dart';
-import 'package:kokorestaurant/theme/app_theme.dart';
 import 'package:kokorestaurant/core/themes/app_colors.dart';
+
+Future<void> openSpecialRestaurantsModal({
+  required BuildContext context,
+  required RestaurantService service,
+}) async {
+  debugPrint('[openSpecialRestaurantsModal] MOSTRANDO bottomSheet (navigator LOCAL)');
+  await showModalBottomSheet(
+    context: context,
+    useRootNavigator: false, // <-- usamos el navigator LOCAL del shell/tab
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => SpecialRestaurantsModal(
+      restaurantService: service,
+      onViewMenu: (Restaurant r) async {
+        debugPrint('[openSpecialRestaurantsModal] onViewMenu recibido para: ${r.name}');
+
+        if (!context.mounted) {
+          debugPrint('[openSpecialRestaurantsModal] context NO montado, abortando push');
+          return;
+        }
+
+        // 1) Intento en navigator LOCAL
+        try {
+          debugPrint('[openSpecialRestaurantsModal] pushNamed LOCAL -> /client');
+          await Navigator.of(context).pushNamed('/client', arguments: r);
+          debugPrint('[openSpecialRestaurantsModal] VOLVIMOS de /client (LOCAL)');
+          return;
+        } catch (e, st) {
+          debugPrint('[openSpecialRestaurantsModal] FALLO push LOCAL: $e');
+          if (kDebugMode) debugPrint(st.toString());
+        }
+
+        // 2) Reintento en navigator ROOT
+        try {
+          if (!context.mounted) return;
+          debugPrint('[openSpecialRestaurantsModal] reintento pushNamed ROOT -> /client');
+          await Navigator.of(context, rootNavigator: true)
+              .pushNamed('/client', arguments: r);
+          debugPrint('[openSpecialRestaurantsModal] VOLVIMOS de /client (ROOT)');
+        } catch (e, st) {
+          debugPrint('[openSpecialRestaurantsModal] FALLO push ROOT: $e');
+          if (kDebugMode) debugPrint(st.toString());
+          // Extra: volcado del árbol para diagnosticar pantallas negras
+          debugPrint('[openSpecialRestaurantsModal] debugDumpApp()');
+          debugDumpApp();
+          debugPrint('[openSpecialRestaurantsModal] debugDumpRenderTree()');
+          debugDumpRenderTree();
+        }
+      },
+    ),
+  );
+  debugPrint('[openSpecialRestaurantsModal] bottomSheet CERRADO');
+}
 
 class SpecialRestaurantsModal extends StatefulWidget {
   final RestaurantService restaurantService;
 
-  const SpecialRestaurantsModal({super.key, required this.restaurantService});
+  /// Callback para “Ver menú”
+  final void Function(Restaurant restaurant) onViewMenu;
+
+  const SpecialRestaurantsModal({
+    super.key,
+    required this.restaurantService,
+    required this.onViewMenu,
+  });
 
   @override
   State<SpecialRestaurantsModal> createState() =>
@@ -64,7 +123,7 @@ class _SpecialRestaurantsModalState extends State<SpecialRestaurantsModal> {
           ),
           child: Column(
             children: [
-              // --- Header: título + contador + cerrar ---
+              // --- Header: título + cerrar ---
               Row(
                 children: [
                   Container(
@@ -102,7 +161,10 @@ class _SpecialRestaurantsModalState extends State<SpecialRestaurantsModal> {
                   const Spacer(),
                   IconButton(
                     tooltip: 'Cerrar',
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      debugPrint('[SpecialRestaurantsModal] Botón cerrar modal');
+                      Navigator.of(context).pop(); // local
+                    },
                     icon: const Icon(
                       Icons.close_rounded,
                       color: Colors.white70,
@@ -133,11 +195,10 @@ class _SpecialRestaurantsModalState extends State<SpecialRestaurantsModal> {
                 child: ValueListenableBuilder<String>(
                   valueListenable: _searchQuery,
                   builder: (context, query, _) {
-                    final stream =
-                        query.isEmpty
-                            ? widget.restaurantService.getEspecialRestaurants()
-                            : widget.restaurantService
-                                .searchEspecialRestaurants(query);
+                    final stream = query.isEmpty
+                        ? widget.restaurantService.getEspecialRestaurants()
+                        : widget.restaurantService
+                            .searchEspecialRestaurants(query);
 
                     return StreamBuilder<List<Restaurant>>(
                       stream: stream,
@@ -160,19 +221,18 @@ class _SpecialRestaurantsModalState extends State<SpecialRestaurantsModal> {
                           return _EmptyState(
                             query: query,
                             primary: primary,
-                            onClear:
-                                query.isNotEmpty
-                                    ? () {
-                                      _searchController.clear();
-                                      _onChanged('');
-                                    }
-                                    : null,
+                            onClear: query.isNotEmpty
+                                ? () {
+                                    _searchController.clear();
+                                    _onChanged('');
+                                  }
+                                : null,
                           );
                         }
 
                         return Column(
                           children: [
-                            // Contador alineado a la derecha
+                            // Contador
                             Align(
                               alignment: Alignment.centerRight,
                               child: Container(
@@ -205,22 +265,26 @@ class _SpecialRestaurantsModalState extends State<SpecialRestaurantsModal> {
                                 behavior: const _NoGlowScroll(),
                                 child: ListView.separated(
                                   itemCount: restaurants.length,
-                                  separatorBuilder:
-                                      (_, __) => Divider(
-                                        height: 10,
-                                        thickness: 0.8,
-                                        color: Colors.white.withOpacity(0.06),
-                                      ),
+                                  separatorBuilder: (_, __) => Divider(
+                                    height: 10,
+                                    thickness: 0.8,
+                                    color: Colors.white.withOpacity(0.06),
+                                  ),
                                   itemBuilder: (context, index) {
                                     final r = restaurants[index];
                                     return _SpecialTile(
                                       restaurant: r,
                                       primary: primary,
-                                      onTap:
-                                          () => Navigator.pop(
-                                            context,
-                                            r,
-                                          ), // return
+                                      onTapRow: () {
+                                        debugPrint('[SpecialRestaurantsModal] onTapRow -> pop modal (LOCAL)');
+                                        Navigator.of(context).pop(r); // local
+                                      },
+                                      onTapMenu: () {
+                                        debugPrint('[SpecialRestaurantsModal] onTapMenu -> pop modal (LOCAL)');
+                                        Navigator.of(context).pop(); // cierra modal (LOCAL)
+                                        debugPrint('[SpecialRestaurantsModal] onTapMenu -> llamar onViewMenu(${r.name})');
+                                        widget.onViewMenu(r);
+                                      },
                                     );
                                   },
                                 ),
@@ -279,17 +343,16 @@ class _SearchField extends StatelessWidget {
             hintText: 'Buscar restaurante especial...',
             hintStyle: const TextStyle(color: Colors.white54),
             prefixIcon: const Icon(Icons.search_rounded, color: Colors.white70),
-            suffixIcon:
-                value.isNotEmpty
-                    ? IconButton(
-                      onPressed: onClear,
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white70,
-                      ),
-                      splashRadius: 18,
-                    )
-                    : null,
+            suffixIcon: value.isNotEmpty
+                ? IconButton(
+                    onPressed: onClear,
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white70,
+                    ),
+                    splashRadius: 18,
+                  )
+                : null,
             filled: true,
             fillColor: Colors.white.withOpacity(0.06),
             contentPadding: const EdgeInsets.symmetric(
@@ -314,12 +377,18 @@ class _SearchField extends StatelessWidget {
 class _SpecialTile extends StatelessWidget {
   final Restaurant restaurant;
   final Color primary;
-  final VoidCallback onTap;
+
+  /// Tocar la fila (devuelve el Restaurant al caller)
+  final VoidCallback onTapRow;
+
+  /// Tocar “Ver menú”
+  final VoidCallback onTapMenu;
 
   const _SpecialTile({
     required this.restaurant,
     required this.primary,
-    required this.onTap,
+    required this.onTapRow,
+    required this.onTapMenu,
   });
 
   @override
@@ -328,7 +397,7 @@ class _SpecialTile extends StatelessWidget {
         restaurant.imageUrl != null && restaurant.imageUrl!.isNotEmpty;
 
     return InkWell(
-      onTap: onTap,
+      onTap: onTapRow,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.all(10),
@@ -359,18 +428,17 @@ class _SpecialTile extends StatelessWidget {
                 ),
               ),
               clipBehavior: Clip.antiAlias,
-              child:
-                  hasImg
-                      ? Image.network(
-                        restaurant.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _placeholder(),
-                        loadingBuilder: (c, child, progress) {
-                          if (progress == null) return child;
-                          return _placeholder(isLoading: true);
-                        },
-                      )
-                      : _placeholder(),
+              child: hasImg
+                  ? Image.network(
+                      restaurant.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _placeholder(),
+                      loadingBuilder: (c, child, progress) {
+                        if (progress == null) return child;
+                        return _placeholder(isLoading: true);
+                      },
+                    )
+                  : _placeholder(),
             ),
             const SizedBox(width: 12),
 
@@ -419,7 +487,7 @@ class _SpecialTile extends StatelessWidget {
             const SizedBox(width: 10),
 
             // Botón Ver menú
-            _MiniButton(primary: primary, onTap: onTap),
+            _MiniButton(primary: primary, onTap: onTapMenu),
           ],
         ),
       ),

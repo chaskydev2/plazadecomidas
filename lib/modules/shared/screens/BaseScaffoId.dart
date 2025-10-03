@@ -25,6 +25,9 @@ class BaseScaffold extends StatelessWidget {
     required this.selectedDrawerIndex,
   });
 
+  bool get _hasPhoto =>
+      (userProfile?.photoUrl != null && userProfile!.photoUrl!.isNotEmpty);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,10 +54,7 @@ class BaseScaffold extends StatelessWidget {
             ),
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
                     Builder(
@@ -73,8 +73,7 @@ class BaseScaffold extends StatelessWidget {
                           ),
                           child: IconButton(
                             icon: const Icon(Icons.menu, color: Colors.black87),
-                            onPressed:
-                                () => Scaffold.of(innerContext).openDrawer(),
+                            onPressed: () => Scaffold.of(innerContext).openDrawer(),
                           ),
                         );
                       },
@@ -96,10 +95,7 @@ class BaseScaffold extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 3,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                             decoration: BoxDecoration(
                               color: AppColors.primary.withOpacity(0.09),
                               borderRadius: BorderRadius.circular(8),
@@ -108,6 +104,8 @@ class BaseScaffold extends StatelessWidget {
                         ],
                       ),
                     ),
+
+                    // Avatar derecha AppBar (tu diseño original, pero con fallback robusto)
                     Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
@@ -123,22 +121,21 @@ class BaseScaffold extends StatelessWidget {
                       child: CircleAvatar(
                         radius: 22,
                         backgroundColor: Colors.white,
-                        child:
-                            (userProfile?.photoUrl != null &&
-                                    userProfile!.photoUrl!.isNotEmpty)
-                                ? ClipOval(
-                                  child: Image.network(
-                                    userProfile!.photoUrl!,
-                                    width: 44,
-                                    height: 44,
-                                    fit: BoxFit.cover,
+                        child: _hasPhoto
+                            ? ClipOval(
+                                child: Image.network(
+                                  userProfile!.photoUrl!,
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.person,
+                                    color: Colors.grey,
+                                    size: 28,
                                   ),
-                                )
-                                : const Icon(
-                                  Icons.person,
-                                  color: Colors.grey,
-                                  size: 28,
                                 ),
+                              )
+                            : const Icon(Icons.person, color: Colors.grey, size: 28),
                       ),
                     ),
                   ],
@@ -148,9 +145,11 @@ class BaseScaffold extends StatelessWidget {
           ),
         ),
       ),
+
       // DRAWER
       drawer: _buildDrawer(context),
       body: body,
+
       // NAV BAR
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
@@ -224,15 +223,13 @@ class BaseScaffold extends StatelessWidget {
         color: AppColors.primary,
         child: Column(
           children: [
-            // Header superior con logo, letra y botón cerrar
+            // Header
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 20,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                 child: Row(
                   children: [
+                    // ⬇️ Aquí mostramos la foto del usuario (manteniendo tu borde y sombras)
                     Container(
                       width: 50,
                       height: 50,
@@ -255,20 +252,25 @@ class BaseScaffold extends StatelessWidget {
                           end: Alignment.bottomRight,
                         ),
                       ),
-                      child: Center(
-                        child: Image.asset(
-                          'assets/images/logo_wifi.png',
-                          width: 28,
-                          height: 28,
-                        ),
+                      child: ClipOval(
+                        child: _hasPhoto
+                            ? Image.network(
+                                userProfile!.photoUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person,
+                                  color: Colors.grey,
+                                  size: 28,
+                                ),
+                              )
+                            : const Icon(Icons.person, color: Colors.grey, size: 28),
                       ),
                     ),
                     const SizedBox(width: 16),
+
+                    // Tu pill con inicial (lo mantenemos igual)
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.13),
                         borderRadius: BorderRadius.circular(12),
@@ -281,8 +283,7 @@ class BaseScaffold extends StatelessWidget {
                         ],
                       ),
                       child: Text(
-                        userProfile?.name != null &&
-                                userProfile!.name.isNotEmpty
+                        (userProfile?.name != null && userProfile!.name.isNotEmpty)
                             ? userProfile!.name[0].toUpperCase()
                             : 'N',
                         style: const TextStyle(
@@ -323,7 +324,8 @@ class BaseScaffold extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            // Lista de navegación
+
+            // Items
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -345,9 +347,7 @@ class BaseScaffold extends StatelessWidget {
                             Navigator.pop(context);
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => const HomeScreen(),
-                              ),
+                              MaterialPageRoute(builder: (_) => const HomeScreen()),
                             );
                           },
                         ),
@@ -360,9 +360,7 @@ class BaseScaffold extends StatelessWidget {
                             Navigator.pop(context);
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => const ProfileScreen(),
-                              ),
+                              MaterialPageRoute(builder: (_) => const ProfileScreen()),
                             );
                           },
                         ),
@@ -375,9 +373,7 @@ class BaseScaffold extends StatelessWidget {
                             Navigator.pop(context);
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => const SettingsScreen(),
-                              ),
+                              MaterialPageRoute(builder: (_) => const SettingsScreen()),
                             );
                           },
                         ),
@@ -429,9 +425,8 @@ class BaseScaffold extends StatelessWidget {
                             ),
                             onPressed: () async {
                               await FirebaseAuth.instance.signOut();
-                              Navigator.of(
-                                context,
-                              ).pushNamedAndRemoveUntil('/', (route) => false);
+                              Navigator.of(context)
+                                  .pushNamedAndRemoveUntil('/', (route) => false);
                             },
                           ),
                         ),
@@ -453,10 +448,7 @@ class BaseScaffold extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color:
-            isSelected
-                ? AppColors.primary.withOpacity(0.12)
-                : Colors.transparent,
+        color: isSelected ? AppColors.primary.withOpacity(0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -526,8 +518,7 @@ class BaseScaffold extends StatelessWidget {
           onTap: onTap,
           visualDensity: VisualDensity.compact,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-          tileColor:
-              isSelected ? Colors.white.withOpacity(0.15) : Colors.transparent,
+          tileColor: isSelected ? Colors.white.withOpacity(0.15) : Colors.transparent,
         ),
       ),
     );

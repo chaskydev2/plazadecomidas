@@ -500,6 +500,23 @@ class _RestaurantListScreenState extends State<RestaurantListScreen> {
                       builder:
                           (context) => SpecialRestaurantsModal(
                             restaurantService: _restaurantService,
+                            onViewMenu: (Restaurant r) {
+                              // 1) Cierra el modal
+                              Navigator.of(context).pop();
+                              // 2) Navega exactamente como tu botón "Ver menú" de las cards
+                              _navigateToRestaurantMenu(r);
+                              // si prefieres inline:
+                              // Navigator.push(
+                              //   context,
+                              //   MaterialPageRoute(
+                              //     builder: (_) => RestaurantMenuSimpleScreen(
+                              //       restaurant: r,
+                              //       userId: user!.uid,
+                              //       restaurantId: r.id,
+                              //     ),
+                              //   ),
+                              // );
+                            },
                           ),
                     );
                   },
