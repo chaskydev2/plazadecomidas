@@ -94,7 +94,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (mounted) {
           Navigator.of(context, rootNavigator: true).pop();
+
           if (role == 'admin') {
+            // Redirigir directamente al panel de admin
             Navigator.of(
               context,
               rootNavigator: true,
@@ -108,12 +110,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               );
             } else {
+              // Manager sin restaurante asignado, llevarlo a cliente
               Navigator.of(
                 context,
                 rootNavigator: true,
               ).pushReplacementNamed('/client');
             }
           } else {
+            // Cliente normal
             Navigator.of(
               context,
               rootNavigator: true,

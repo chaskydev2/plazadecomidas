@@ -17,25 +17,43 @@ class AuthService {
   Future<void> createInitialAdmin() async {
     try {
       // Verificar si ya existe un administrador
-      final adminQuery = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: 'admin')
-          .get();
+      final adminQuery =
+          await _firestore
+              .collection('users')
+              .where('role', isEqualTo: 'admin')
+              .get();
 
       if (adminQuery.docs.isEmpty) {
         // Crear usuario en Authentication
-        UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-          email: 'pepe@gmail.com',
-          password: 'pepe4582',
-        );
+        UserCredential userCredential = await _auth
+            .createUserWithEmailAndPassword(
+              email: 'pepe@gmail.com',
+              password: 'pepe4582',
+            );
 
-        // Crear documento en Firestore
+        // Crear documento en Firestore con TODOS los campos necesarios
         await _firestore.collection('users').doc(userCredential.user!.uid).set({
           'email': 'pepe@gmail.com',
           'name': 'Administrador',
           'role': 'admin',
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLogin': FieldValue.serverTimestamp(),
+          'createdAt': DateTime.now(),
+          'updatedAt': DateTime.now(),
+          'lastLogin': DateTime.now(),
+          'active': true,
+          'notifications': true,
+        });
+      } else {
+        // Si ya existe, actualizar con todos los campos necesarios
+        final adminDoc = adminQuery.docs.first;
+        await _firestore.collection('users').doc(adminDoc.id).update({
+          'email': 'pepe@gmail.com',
+          'name': 'Administrador',
+          'role': 'admin',
+          'createdAt': DateTime.now(),
+          'updatedAt': DateTime.now(),
+          'lastLogin': DateTime.now(),
+          'active': true,
+          'notifications': true,
         });
       }
     } catch (e) {
@@ -44,14 +62,22 @@ class AuthService {
   }
 
   // Iniciar sesión
-  Future<User?> signIn(String email, String password, BuildContext context) async {
+  Future<User?> signIn(
+    String email,
+    String password,
+    BuildContext context,
+  ) async {
     try {
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       // Verificar si el usuario existe en Firestore
-      final userDoc = await _firestore.collection('users').doc(userCredential.user!.uid).get();
+      final userDoc =
+          await _firestore
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get();
       if (!userDoc.exists) {
         await _firestore.collection('users').doc(userCredential.user!.uid).set({
           'email': email,
@@ -59,9 +85,10 @@ class AuthService {
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
-        await _firestore.collection('users').doc(userCredential.user!.uid).update({
-          'lastLogin': FieldValue.serverTimestamp(),
-        });
+        await _firestore
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .update({'lastLogin': FieldValue.serverTimestamp()});
       }
       return userCredential.user;
     } catch (e) {
@@ -76,7 +103,8 @@ class AuthService {
       if (googleUser == null) {
         return null; // Cancelado por el usuario
       }
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -84,7 +112,11 @@ class AuthService {
       final userCredential = await _auth.signInWithCredential(credential);
 
       // Si es la primera vez, crea el usuario en Firestore
-      final userDoc = await _firestore.collection('users').doc(userCredential.user!.uid).get();
+      final userDoc =
+          await _firestore
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get();
       if (!userDoc.exists) {
         await _firestore.collection('users').doc(userCredential.user!.uid).set({
           'email': userCredential.user!.email,
@@ -94,9 +126,10 @@ class AuthService {
           'lastLogin': FieldValue.serverTimestamp(),
         });
       } else {
-        await _firestore.collection('users').doc(userCredential.user!.uid).update({
-          'lastLogin': FieldValue.serverTimestamp(),
-        });
+        await _firestore
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .update({'lastLogin': FieldValue.serverTimestamp()});
       }
       return userCredential.user;
     } catch (e) {
@@ -105,25 +138,31 @@ class AuthService {
   }
 
   // Cerrar sesión
-  Future<void> signOut(BuildContext context, {bool skipConfirmation = false}) async {
+  Future<void> signOut(
+    BuildContext context, {
+    bool skipConfirmation = false,
+  }) async {
     try {
       if (!skipConfirmation) {
         final confirm = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Cerrar Sesión'),
-            content: const Text('¿Estás seguro de que deseas cerrar sesión?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Cerrar Sesión'),
+                content: const Text(
+                  '¿Estás seguro de que deseas cerrar sesión?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Cerrar Sesión'),
+                  ),
+                ],
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Cerrar Sesión'),
-              ),
-            ],
-          ),
         );
         if (confirm != true) return;
       }
@@ -141,7 +180,8 @@ class AuthService {
   }
 
   // Cambiar contraseña
-  Future<void> changePassword(User user, {
+  Future<void> changePassword(
+    User user, {
     required String currentPassword,
     required String newPassword,
   }) async {
@@ -165,7 +205,8 @@ class AuthService {
     try {
       User? user = _auth.currentUser;
       if (user != null) {
-        DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+        DocumentSnapshot doc =
+            await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists) {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
           data['id'] = doc.id;
@@ -179,7 +220,12 @@ class AuthService {
   }
 
   // Registrar usuario
-  Future<User?> register(String email, String password, String name, BuildContext context) async {
+  Future<User?> register(
+    String email,
+    String password,
+    String name,
+    BuildContext context,
+  ) async {
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -218,16 +264,19 @@ class AuthService {
   Future<void> createInitialAdminAccount() async {
     try {
       print('Iniciando creación de cuenta de administrador...');
-      
+
       // Verificar si ya existe un administrador en Firestore
-      final adminQuery = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: 'admin')
-          .get();
+      final adminQuery =
+          await _firestore
+              .collection('users')
+              .where('role', isEqualTo: 'admin')
+              .get();
 
       if (adminQuery.docs.isEmpty) {
-        print('No se encontró un administrador en Firestore, creando uno nuevo...');
-        
+        print(
+          'No se encontró un administrador en Firestore, creando uno nuevo...',
+        );
+
         // Crear usuario en Authentication
         UserCredential userCredential;
         try {
@@ -236,11 +285,11 @@ class AuthService {
             password: 'pepe4582',
           );
           print('Usuario creado en Authentication con éxito');
-          
+
           // Obtener el UID del usuario
           final uid = userCredential.user!.uid;
           print('UID del usuario: $uid');
-          
+
           // Crear el documento en Firestore
           await _firestore.collection('users').doc(uid).set({
             'name': 'Administrador',
@@ -248,27 +297,28 @@ class AuthService {
             'role': 'admin',
             'createdAt': FieldValue.serverTimestamp(),
           });
-          
+
           print('Documento de administrador creado en Firestore');
           print('Email: pepe@gmail.com');
           print('Contraseña: pepe4582');
-          
+
           // Cerrar sesión inmediatamente después de crear la cuenta
           await _auth.signOut();
           print('Sesión cerrada después de crear la cuenta de administrador');
         } catch (e) {
           print('Error al crear usuario en Authentication: $e');
-          
+
           // Si el usuario ya existe, solo verificamos que tenga el rol de admin en Firestore
           if (e.toString().contains('email-already-in-use')) {
             print('El correo ya está en uso, verificando rol en Firestore...');
-            
+
             // Buscar el usuario por email
-            final userQuery = await _firestore
-                .collection('users')
-                .where('email', isEqualTo: 'pepe@gmail.com')
-                .get();
-                
+            final userQuery =
+                await _firestore
+                    .collection('users')
+                    .where('email', isEqualTo: 'pepe@gmail.com')
+                    .get();
+
             if (userQuery.docs.isEmpty) {
               // El usuario existe en Authentication pero no en Firestore
               // Intentamos iniciar sesión para obtener el UID
@@ -276,9 +326,9 @@ class AuthService {
                 email: 'pepe@gmail.com',
                 password: 'pepe4582',
               );
-              
+
               final uid = userCredential.user!.uid;
-              
+
               // Crear el documento en Firestore
               await _firestore.collection('users').doc(uid).set({
                 'name': 'Administrador',
@@ -286,14 +336,20 @@ class AuthService {
                 'role': 'admin',
                 'createdAt': FieldValue.serverTimestamp(),
               });
-              
-              print('Documento de administrador creado en Firestore para usuario existente');
-              
+
+              print(
+                'Documento de administrador creado en Firestore para usuario existente',
+              );
+
               // Cerrar sesión
               await _auth.signOut();
-              print('Sesión cerrada después de crear la cuenta de administrador');
+              print(
+                'Sesión cerrada después de crear la cuenta de administrador',
+              );
             } else {
-              print('El usuario ya existe en Firestore con rol: ${userQuery.docs.first.data()['role']}');
+              print(
+                'El usuario ya existe en Firestore con rol: ${userQuery.docs.first.data()['role']}',
+              );
             }
           } else {
             rethrow; // Si es otro tipo de error, lo propagamos
@@ -306,4 +362,4 @@ class AuthService {
       print('Error al crear la cuenta de administrador: $e');
     }
   }
-} 
+}

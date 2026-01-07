@@ -7,6 +7,7 @@ import 'package:kokorestaurant/modules/manager/screens/manager_profile_screen.da
 import 'package:kokorestaurant/modules/manager/screens/manager_settings_screen.dart';
 import 'package:kokorestaurant/modules/manager/screens/pedidos_manager_screen.dart';
 import 'package:kokorestaurant/modules/manager/screens/employees_screen.dart';
+import 'package:kokorestaurant/modules/manager/screens/payment_qr_management_screen.dart';
 import 'package:kokorestaurant/core/themes/app_colors.dart';
 
 class ManagerDashboardScreen extends StatefulWidget {
@@ -393,6 +394,23 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                               MaterialPageRoute(
                                 builder:
                                     (_) => ManagerSettingsScreen(
+                                      restaurantId: widget.restaurantId,
+                                    ),
+                              ),
+                            );
+                          },
+                        ),
+                        _buildDrawerItem(
+                          context: context,
+                          icon: Icons.qr_code,
+                          label: 'Mi QR de pagos',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => PaymentQRManagementScreen(
                                       restaurantId: widget.restaurantId,
                                     ),
                               ),

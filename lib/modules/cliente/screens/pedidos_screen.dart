@@ -16,6 +16,7 @@ import '../models/menu_item.dart';
 import '../models/order.dart';
 import '../services/qr_service.dart';
 import '../services/history_service.dart';
+import 'qr_payment_screen.dart';
 
 class PedidosScreen extends StatefulWidget {
   final List<MenuItem> pedidos;
@@ -45,6 +46,7 @@ class _PedidosScreenState extends State<PedidosScreen>
   bool _isSending = false;
   String idSucursal = '';
   String userNameOrder = '';
+  PaymentMethod _selectedPaymentMethod = PaymentMethod.cash; // Nuevo
 
   @override
   void initState() {
@@ -97,19 +99,64 @@ class _PedidosScreenState extends State<PedidosScreen>
   Future<void> _enviarPedido() async {
     if (_isSending) return;
 
-    final confirmar = await showDialog<bool>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _ConfirmDialog(),
+      builder:
+          (_) => _PaymentMethodDialog(currentMethod: _selectedPaymentMethod),
     );
 
-    if (confirmar != true) return;
+    if (result == null || result['confirmed'] != true) return;
 
+    // Actualizar el método de pago seleccionado
+    setState(() => _selectedPaymentMethod = result['paymentMethod']);
+
+    // Si el método de pago es QR, mostrar la pantalla de pago QR
+    if (_selectedPaymentMethod == PaymentMethod.qr) {
+      // Navegar a la pantalla de pago por QR
+      final qrPaymentResult = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => QRPaymentScreen(
+                restaurantId: widget.restaurantId,
+                amount: _calcularTotal(),
+                restaurantName: widget.restaurant.name,
+              ),
+        ),
+      );
+
+      if (qrPaymentResult == null || qrPaymentResult['paid'] != true) {
+        // Usuario canceló el pago por QR
+        return;
+      }
+
+      // Usuario completó el pago por QR, crear orden con el receiptId
+      await _createOrderWithPayment(
+        paymentMethod: PaymentMethod.qr,
+        receiptId: qrPaymentResult['receiptId'],
+      );
+    } else {
+      // Flujo normal con efectivo
+      await _createOrderWithPayment(paymentMethod: PaymentMethod.cash);
+    }
+  }
+
+  Future<void> _createOrderWithPayment({
+    required PaymentMethod paymentMethod,
+    String? receiptId,
+  }) async {
     setState(() => _isSending = true);
     try {
       if (widget.qrCode.isEmpty) {
-        await _createOrderWithoutQr();
+        await _createOrderWithoutQr(
+          paymentMethod: paymentMethod,
+          receiptId: receiptId,
+        );
       } else {
-        await _createOrderWithQr();
+        await _createOrderWithQr(
+          paymentMethod: paymentMethod,
+          receiptId: receiptId,
+        );
       }
 
       widget.onUpdate([]);
@@ -141,7 +188,10 @@ class _PedidosScreenState extends State<PedidosScreen>
     }
   }
 
-  Future<void> _createOrderWithQr() async {
+  Future<void> _createOrderWithQr({
+    required PaymentMethod paymentMethod,
+    String? receiptId,
+  }) async {
     final table = await QRService().validateQR(widget.qrCode);
     if (table == null) {
       throw Exception(
@@ -200,6 +250,12 @@ class _PedidosScreenState extends State<PedidosScreen>
       createdAt: DateTime.now(),
       notes: 'Mesa ${table.number}',
       orderNumber: orderNumber,
+      paymentMethod: paymentMethod,
+      paymentStatus:
+          paymentMethod == PaymentMethod.qr
+              ? PaymentStatus.pending
+              : PaymentStatus.pending,
+      receiptId: receiptId,
     );
 
     await orderRef.set(order.toJson());
@@ -222,7 +278,10 @@ class _PedidosScreenState extends State<PedidosScreen>
     }
   }
 
-  Future<void> _createOrderWithoutQr() async {
+  Future<void> _createOrderWithoutQr({
+    required PaymentMethod paymentMethod,
+    String? receiptId,
+  }) async {
     final table = await QRService().sendOrder(
       widget.restaurantId,
       FirebaseAuth.instance.currentUser?.displayName ?? 'Invitado',
@@ -279,6 +338,12 @@ class _PedidosScreenState extends State<PedidosScreen>
       orderNumber: orderNumber,
       // Nuevo campo para la sucursal
       idSucursal: idSucursal,
+      paymentMethod: paymentMethod,
+      paymentStatus:
+          paymentMethod == PaymentMethod.qr
+              ? PaymentStatus.pending
+              : PaymentStatus.pending,
+      receiptId: receiptId,
     );
 
     await orderRef.set(order.toJson());
@@ -580,6 +645,176 @@ class _ConfirmDialog extends StatelessWidget {
           child: const Text('Enviar', style: TextStyle(color: Colors.white)),
         ),
       ],
+    );
+  }
+}
+
+// --- Diálogo de selección de método de pago ---
+class _PaymentMethodDialog extends StatefulWidget {
+  final PaymentMethod currentMethod;
+
+  const _PaymentMethodDialog({required this.currentMethod});
+
+  @override
+  _PaymentMethodDialogState createState() => _PaymentMethodDialogState();
+}
+
+class _PaymentMethodDialogState extends State<_PaymentMethodDialog> {
+  late PaymentMethod _selectedMethod;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMethod = widget.currentMethod;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.white,
+      title: Row(
+        children: const [
+          Icon(Icons.payment, color: Color(0xFFFF6243)),
+          SizedBox(width: 8),
+          Text(
+            'Método de Pago',
+            style: TextStyle(
+              color: Color(0xFF1F2937),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Selecciona cómo deseas pagar tu pedido:',
+            style: TextStyle(fontSize: 15, color: Colors.black87),
+          ),
+          const SizedBox(height: 20),
+          _PaymentMethodOption(
+            icon: Icons.money,
+            title: 'Efectivo',
+            subtitle: 'Paga al recibir tu pedido',
+            isSelected: _selectedMethod == PaymentMethod.cash,
+            onTap: () => setState(() => _selectedMethod = PaymentMethod.cash),
+          ),
+          const SizedBox(height: 12),
+          _PaymentMethodOption(
+            icon: Icons.qr_code,
+            title: 'Pago por QR',
+            subtitle: 'Paga con transferencia bancaria',
+            isSelected: _selectedMethod == PaymentMethod.qr,
+            onTap: () => setState(() => _selectedMethod = PaymentMethod.qr),
+          ),
+        ],
+      ),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed:
+              () => Navigator.pop(context, {
+                'confirmed': true,
+                'paymentMethod': _selectedMethod,
+              }),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF6243),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: const Text('Continuar', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentMethodOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PaymentMethodOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6243) : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          color:
+              isSelected
+                  ? const Color(0xFFFF6243).withOpacity(0.05)
+                  : Colors.white,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFFFF6243) : Colors.grey[200],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.white : Colors.grey[600],
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color:
+                          isSelected ? const Color(0xFFFF6243) : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle,
+                color: Color(0xFFFF6243),
+                size: 24,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

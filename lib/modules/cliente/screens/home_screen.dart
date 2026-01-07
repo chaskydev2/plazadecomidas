@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kokorestaurant/core/themes/app_colors.dart';
 import 'package:kokorestaurant/modules/cliente/models/user_profile.dart';
 import 'package:kokorestaurant/modules/cliente/screens/restaurant_list_screen.dart';
 import 'package:kokorestaurant/modules/cliente/screens/qr_scanner_screen.dart';
 import 'package:kokorestaurant/modules/cliente/screens/history_screen.dart';
 import 'package:kokorestaurant/modules/cliente/services/user_service.dart';
-import 'package:kokorestaurant/modules/shared/screens/BaseScaffoId.dart'; // Tu nuevo widget aquí
+import 'package:kokorestaurant/modules/shared/screens/BaseScaffoId.dart';
+import 'package:kokorestaurant/modules/manager/screens/manager_dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,6 +34,46 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _checkUserRoleAndInit();
+  }
+
+  Future<void> _checkUserRoleAndInit() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        // Verificar el rol del usuario antes de cargar el perfil
+        final doc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        final role = doc.data()?['role'] ?? 'client';
+
+        // Si es admin o manager, redirigir a su pantalla correspondiente
+        if (role == 'admin') {
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/admin');
+          }
+          return;
+        } else if (role == 'manager') {
+          final restaurantId = doc.data()?['restaurantId'];
+          if (restaurantId != null && mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder:
+                    (_) => ManagerDashboardScreen(restaurantId: restaurantId),
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        print('Error verificando rol: $e');
+      }
+    }
+
+    // Si es cliente, cargar perfil normalmente
     _initProfile();
   }
 

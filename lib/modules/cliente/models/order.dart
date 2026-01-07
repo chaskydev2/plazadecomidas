@@ -2,6 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum OrderStatus { pending, confirmed, inProgress, ready, delivered, cancelled }
 
+enum PaymentMethod { cash, qr }
+
+enum PaymentStatus { pending, paid, verified }
+
 class ClientOrder {
   final String id;
   final String restaurantId;
@@ -18,6 +22,9 @@ class ClientOrder {
   final String? restaurantAddress; // 👈 nuevo
   final String? sucursalName;
   final String? sucursalAddress;
+  final PaymentMethod paymentMethod; // Método de pago
+  final PaymentStatus paymentStatus; // Estado del pago
+  final String? receiptId; // ID del comprobante de pago (si es por QR)
 
   ClientOrder({
     required this.id,
@@ -35,6 +42,9 @@ class ClientOrder {
     this.restaurantAddress,
     this.sucursalName,
     this.sucursalAddress,
+    this.paymentMethod = PaymentMethod.cash,
+    this.paymentStatus = PaymentStatus.pending,
+    this.receiptId,
   });
 
   // Obtener el número de orden formateado con ceros a la izquierda
@@ -65,6 +75,21 @@ class ClientOrder {
       restaurantAddress: json['restaurantAddress'], // 👈
       sucursalName: json['sucursalName'] as String?,
       sucursalAddress: json['sucursalAddress'] as String?,
+      paymentMethod:
+          json['paymentMethod'] != null
+              ? PaymentMethod.values.firstWhere(
+                (e) => e.toString() == 'PaymentMethod.${json['paymentMethod']}',
+                orElse: () => PaymentMethod.cash,
+              )
+              : PaymentMethod.cash,
+      paymentStatus:
+          json['paymentStatus'] != null
+              ? PaymentStatus.values.firstWhere(
+                (e) => e.toString() == 'PaymentStatus.${json['paymentStatus']}',
+                orElse: () => PaymentStatus.pending,
+              )
+              : PaymentStatus.pending,
+      receiptId: json['receiptId'] as String?,
     );
   }
 
@@ -83,6 +108,9 @@ class ClientOrder {
       'notes': notes,
       'orderNumber': orderNumber,
       'idSucursal': idSucursal,
+      'paymentMethod': paymentMethod.toString().split('.').last,
+      'paymentStatus': paymentStatus.toString().split('.').last,
+      'receiptId': receiptId,
     };
   }
 }
