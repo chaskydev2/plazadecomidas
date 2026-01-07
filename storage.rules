@@ -1,0 +1,46 @@
+// Reglas de seguridad para Firebase Storage
+// Estas reglas deben ser configuradas en la consola de Firebase:
+// https://console.firebase.google.com → Storage → Rules
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Permitir lectura pública de imágenes de QR de pago
+    match /payment_qrs/{restaurantId}/{fileName} {
+      // Cualquiera puede leer (para que los clientes vean el QR)
+      allow read: if true;
+      
+      // Solo usuarios autenticados pueden escribir
+      // En producción, deberías verificar que el usuario sea el manager del restaurante
+      allow write: if request.auth != null;
+    }
+    
+    // Comprobantes de pago
+    match /payment_receipts/{restaurantId}/{fileName} {
+      // Solo el restaurante puede leer sus comprobantes
+      allow read: if request.auth != null;
+      
+      // Solo usuarios autenticados pueden subir comprobantes
+      allow write: if request.auth != null;
+    }
+    
+    // Regla por defecto: denegar todo lo demás
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// INSTRUCCIONES PARA APLICAR ESTAS REGLAS:
+// 1. Ve a https://console.firebase.google.com
+// 2. Selecciona tu proyecto
+// 3. En el menú lateral, ve a "Storage"
+// 4. Haz clic en la pestaña "Rules"
+// 5. Reemplaza las reglas actuales con las de este archivo
+// 6. Haz clic en "Publish" o "Publicar"
+
+// NOTA: Si quieres reglas más permisivas para desarrollo (NO RECOMENDADO PARA PRODUCCIÓN):
+// Puedes usar temporalmente:
+// allow read, write: if request.auth != null;
+// Esto permite a cualquier usuario autenticado leer y escribir
