@@ -30,27 +30,27 @@ android {
 
     defaultConfig {
         applicationId = "com.zonafood.kokoplaza"
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            // ✅ CORREGIDO: eliminar "../app/" si el .jks está en android/
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
-        }
-    }
+    //signingConfigs {
+       // create("release") {
+            //keyAlias = keystoreProperties["keyAlias"] as String
+            //keyPassword = keystoreProperties["keyPassword"] as String
+            //// ✅ CORREGIDO: eliminar "../app/" si el .jks está en android/
+            //storeFile = file(keystoreProperties["storeFile"] as String)
+            //storePassword = keystoreProperties["storePassword"] as String
+        //}
+    //}
 
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("release")
+            //signingConfig = signingConfigs.getByName("release")
         }
     }
 }
